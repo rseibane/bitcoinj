@@ -1,6 +1,6 @@
 package org.bitcoinj.core;
 
-import javafx.util.Pair;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 
 /**
  * Created by Hash Engineering on 1/19/2018.
@@ -201,7 +201,7 @@ public class CashAddressHelper {
         return ret.toString();
     }
 
-    public static Pair<String, byte[]> decodeCashAddress(String str, String defaultPrefix) {
+    public static ImmutablePair<String, byte[]> decodeCashAddress(String str, String defaultPrefix) {
         // Go over the string and do some sanity checks.
         boolean lower = false, upper = false, hasNumber = false;
         int prefixSize = 0;
@@ -274,7 +274,7 @@ public class CashAddressHelper {
 
         byte[] result = new byte[values.length - 8];
         System.arraycopy(values, 0, result, 0, values.length - 8);
-        return new Pair(prefix.toString(), result);
+        return new ImmutablePair(prefix.toString(), result);
     }
 
     static public byte[] packAddressData(byte[] payload, byte type) {
@@ -358,5 +358,13 @@ public class CashAddressHelper {
         }
 
         return true;
+    }
+
+    public static String getPrefix(String address)
+    {
+        int colon = address.indexOf(':');
+        if(colon != -1)
+            return address.substring(0, colon);
+        return null;
     }
 }

@@ -1,6 +1,6 @@
 package org.bitcoinj.core;
 
-import javafx.util.Pair;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.bitcoinj.params.Networks;
 import org.bitcoinj.script.Script;
 
@@ -48,10 +48,27 @@ public class CashAddressFactory {
         return new CashAddress(addressParams, parsed.version, parsed.bytes);
     }
 
-    public CashAddress getFromFormattedAddress(NetworkParameters params, String addr) throws AddressFormatException {
+    public CashAddress getFromFormattedAddress(@Nullable NetworkParameters params, String addr)
+            throws AddressFormatException {
+        String addressPrefix = CashAddressHelper.getPrefix(addr);
+        if (params != null) {
+            if (!isAcceptablePrefix(params, addressPrefix)) {
+                throw new WrongNetworkException(addressPrefix, params.getCashAddrPrefix());
+            }
+        } else {
+            for (NetworkParameters p : Networks.get()) {
+                if (isAcceptablePrefix(p, addressPrefix)) {
+                    params = p;
+                    break;
+                }
+            }
+            if (params == null) {
+                throw new AddressFormatException("No network found for " + addressPrefix);
+            }
+        }
         CashAddressValidator cashAddressValidator = CashAddressValidator.create();
 
-        Pair<String, byte[]> pair = CashAddressHelper.decodeCashAddress(addr, params.getCashAddrPrefix());
+        ImmutablePair<String, byte[]> pair = CashAddressHelper.decodeCashAddress(addr, params.getCashAddrPrefix());
         String prefix = pair.getKey();
         byte[] payload = pair.getValue();
 
@@ -101,4 +118,8 @@ public class CashAddressFactory {
         return hash_size;
     }
 
+    private boolean isAcceptablePrefix(NetworkParameters params, String prefix)
+    {
+        return params.getCashAddrPrefix().equals(prefix.toLowerCase());
+    }
 }
