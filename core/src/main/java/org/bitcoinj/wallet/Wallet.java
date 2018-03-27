@@ -17,70 +17,50 @@
 
 package org.bitcoinj.wallet;
 
-import com.google.common.annotations.*;
-import com.google.common.base.*;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Throwables;
 import com.google.common.collect.*;
-import com.google.common.primitives.*;
-import com.google.common.util.concurrent.*;
-import com.google.protobuf.*;
-import net.jcip.annotations.*;
-import org.bitcoin.protocols.payments.Protos.*;
-import org.bitcoinj.core.listeners.*;
-import org.bitcoinj.core.AbstractBlockChain;
-import org.bitcoinj.core.Address;
-import org.bitcoinj.core.BlockChain;
-import org.bitcoinj.core.BloomFilter;
-import org.bitcoinj.core.Coin;
-import org.bitcoinj.core.Context;
-import org.bitcoinj.core.ECKey;
-import org.bitcoinj.core.FilteredBlock;
-import org.bitcoinj.core.InsufficientMoneyException;
-import org.bitcoinj.core.Message;
-import org.bitcoinj.core.NetworkParameters;
-import org.bitcoinj.core.Peer;
-import org.bitcoinj.core.PeerFilterProvider;
-import org.bitcoinj.core.PeerGroup;
-import org.bitcoinj.core.ScriptException;
-import org.bitcoinj.core.Sha256Hash;
-import org.bitcoinj.core.StoredBlock;
-import org.bitcoinj.core.Transaction;
-import org.bitcoinj.core.TransactionBag;
-import org.bitcoinj.core.TransactionBroadcast;
-import org.bitcoinj.core.TransactionBroadcaster;
-import org.bitcoinj.core.TransactionConfidence;
-import org.bitcoinj.core.TransactionInput;
-import org.bitcoinj.core.TransactionOutPoint;
-import org.bitcoinj.core.TransactionOutput;
-import org.bitcoinj.core.UTXO;
-import org.bitcoinj.core.UTXOProvider;
-import org.bitcoinj.core.UTXOProviderException;
-import org.bitcoinj.core.Utils;
-import org.bitcoinj.core.VarInt;
-import org.bitcoinj.core.VerificationException;
-import org.bitcoinj.core.TransactionConfidence.*;
+import com.google.common.primitives.Ints;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+import com.google.protobuf.ByteString;
+import net.jcip.annotations.GuardedBy;
+import org.bitcoinj.broadcast.TransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
+import org.bitcoinj.core.*;
+import org.bitcoinj.core.TransactionConfidence.ConfidenceType;
+import org.bitcoinj.core.listeners.NewBestBlockListener;
+import org.bitcoinj.core.listeners.ReorganizeListener;
+import org.bitcoinj.core.listeners.TransactionConfidenceEventListener;
+import org.bitcoinj.core.listeners.TransactionReceivedInBlockListener;
 import org.bitcoinj.crypto.*;
-import org.bitcoinj.script.*;
-import org.bitcoinj.signers.*;
-import org.bitcoinj.utils.*;
-import org.bitcoinj.wallet.Protos.Wallet.*;
-import org.bitcoinj.wallet.WalletTransaction.*;
-import org.bitcoinj.wallet.listeners.KeyChainEventListener;
-import org.bitcoinj.wallet.listeners.ScriptsChangeEventListener;
-import org.bitcoinj.wallet.listeners.WalletChangeEventListener;
-import org.bitcoinj.wallet.listeners.WalletCoinsReceivedEventListener;
-import org.bitcoinj.wallet.listeners.WalletCoinsSentEventListener;
-import org.bitcoinj.wallet.listeners.WalletEventListener;
-import org.bitcoinj.wallet.listeners.WalletReorganizeEventListener;
-import org.slf4j.*;
-import org.spongycastle.crypto.params.*;
+import org.bitcoinj.script.Script;
+import org.bitcoinj.script.ScriptBuilder;
+import org.bitcoinj.script.ScriptChunk;
+import org.bitcoinj.signers.LocalTransactionSigner;
+import org.bitcoinj.signers.MissingSigResolutionSigner;
+import org.bitcoinj.signers.TransactionSigner;
+import org.bitcoinj.utils.BaseTaggableObject;
+import org.bitcoinj.utils.ListenerRegistration;
+import org.bitcoinj.utils.Threading;
+import org.bitcoinj.wallet.Protos.Wallet.EncryptionType;
+import org.bitcoinj.wallet.WalletTransaction.Pool;
+import org.bitcoinj.wallet.listeners.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.spongycastle.crypto.params.KeyParameter;
 
-import javax.annotation.*;
+import javax.annotation.Nullable;
 import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.util.concurrent.locks.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static com.google.common.base.Preconditions.*;
 
@@ -226,7 +206,7 @@ public class Wallet extends BaseTaggableObject
     private Map<Transaction, TransactionConfidence.Listener.ChangeReason> confidenceChanged;
     protected volatile WalletFiles vFileManager;
     // Object that is used to send transactions asynchronously when the wallet requires it.
-    protected volatile TransactionBroadcaster vTransactionBroadcaster;
+    protected volatile TransactionBroadcasterFactory vTransactionBroadcasterFactory;
     // UNIX time in seconds. Money controlled by keys created before this time will be automatically respent to a key
     // that was created after it. Useful when you believe some keys have been compromised.
     private volatile long vKeyRotationTimestamp;
@@ -3687,7 +3667,7 @@ public class Wallet extends BaseTaggableObject
         /** A future that will complete once the tx message has been successfully broadcast to the network. This is just the result of calling broadcast.future() */
         public ListenableFuture<Transaction> broadcastComplete;
         /** The broadcast object returned by the linked TransactionBroadcaster */
-        public TransactionBroadcast broadcast;
+        public TransactionBroadcaster broadcast;
     }
 
     /**
@@ -3713,7 +3693,7 @@ public class Wallet extends BaseTaggableObject
      * {@link Wallet#currentChangeAddress()}, so you must have added at least one key.</p>
      *
      * <p>If you just want to send money quickly, you probably want
-     * {@link Wallet#sendCoins(TransactionBroadcaster, Address, Coin)} instead. That will create the sending
+     * {@link Wallet#sendCoins(TransactionBroadcasterFactory, Address, Coin)} instead. That will create the sending
      * transaction, commit to the wallet and broadcast it to the network all in one go. This method is lower level
      * and lets you see the proposed transaction before anything is done with it.</p>
      *
@@ -3788,7 +3768,7 @@ public class Wallet extends BaseTaggableObject
      * <p>You MUST ensure that value is not smaller than {@link Transaction#MIN_NONDUST_OUTPUT} or the transaction will
      * almost certainly be rejected by the network as dust.</p>
      *
-     * @param broadcaster a {@link TransactionBroadcaster} to use to send the transactions out.
+     * @param broadcaster a {@link TransactionBroadcasterFactory} to use to send the transactions out.
      * @param to Which address to send coins to.
      * @param value How much value to send.
      * @return An object containing the transaction that was created, and a future for the broadcast of it.
@@ -3798,19 +3778,19 @@ public class Wallet extends BaseTaggableObject
      * @throws ExceededMaxTransactionSize if the resultant transaction is too big for Bitcoin to process.
      * @throws MultipleOpReturnRequested if there is more than one OP_RETURN output for the resultant transaction.
      */
-    public SendResult sendCoins(TransactionBroadcaster broadcaster, Address to, Coin value) throws InsufficientMoneyException {
+    public SendResult sendCoins(TransactionBroadcasterFactory broadcaster, Address to, Coin value) throws InsufficientMoneyException {
         SendRequest request = SendRequest.to(to, value);
         return sendCoins(broadcaster, request);
     }
 
 
-    public SendResult sendCoins(TransactionBroadcaster broadcaster, Address to, Coin value, boolean useforkId) throws InsufficientMoneyException {
+    public SendResult sendCoins(TransactionBroadcasterFactory broadcaster, Address to, Coin value, boolean useforkId) throws InsufficientMoneyException {
         SendRequest request = SendRequest.to(to, value);
         request.setUseForkId(useforkId);
         return sendCoins(broadcaster, request);
     }
     /**
-     * <p>Sends coins according to the given request, via the given {@link TransactionBroadcaster}.</p>
+     * <p>Sends coins according to the given request, via the given {@link TransactionBroadcasterFactory}.</p>
      *
      * <p>The returned object provides both the transaction, and a future that can be used to learn when the broadcast
      * is complete. Complete means, if the PeerGroup is limited to only one connection, when it was written out to
@@ -3830,7 +3810,7 @@ public class Wallet extends BaseTaggableObject
      * @throws ExceededMaxTransactionSize if the resultant transaction is too big for Bitcoin to process.
      * @throws MultipleOpReturnRequested if there is more than one OP_RETURN output for the resultant transaction.
      */
-    public SendResult sendCoins(TransactionBroadcaster broadcaster, SendRequest request) throws InsufficientMoneyException {
+    public SendResult sendCoins(TransactionBroadcasterFactory broadcaster, SendRequest request) throws InsufficientMoneyException {
         // Should not be locked here, as we're going to call into the broadcaster and that might want to hold its
         // own lock. sendCoinsOffline handles everything that needs to be locked.
         checkState(!lock.isHeldByCurrentThread());
@@ -3845,14 +3825,14 @@ public class Wallet extends BaseTaggableObject
         // count of seen peers, the memory pool will update the transaction confidence object, that will invoke the
         // txConfidenceListener which will in turn invoke the wallets event listener onTransactionConfidenceChanged
         // method.
-        result.broadcast = broadcaster.broadcastTransaction(tx);
+        result.broadcast = broadcaster.getTransactionBroadcaster(tx);
         result.broadcastComplete = result.broadcast.future();
         return result;
     }
 
     /**
      * Satisfies the given {@link SendRequest} using the default transaction broadcaster configured either via
-     * {@link PeerGroup#addWallet(Wallet)} or directly with {@link #setTransactionBroadcaster(TransactionBroadcaster)}.
+     * {@link PeerGroup#addWallet(Wallet)} or directly with {@link #setTransactionBroadcaster(TransactionBroadcasterFactory)}.
      *
      * @param request the SendRequest that describes what to do, get one using static methods on SendRequest itself.
      * @return An object containing the transaction that was created, and a future for the broadcast of it.
@@ -3865,7 +3845,7 @@ public class Wallet extends BaseTaggableObject
      * @throws MultipleOpReturnRequested if there is more than one OP_RETURN output for the resultant transaction.
      */
     public SendResult sendCoins(SendRequest request) throws InsufficientMoneyException {
-        TransactionBroadcaster broadcaster = vTransactionBroadcaster;
+        TransactionBroadcasterFactory broadcaster = vTransactionBroadcasterFactory;
         checkState(broadcaster != null, "No transaction broadcaster is configured");
         return sendCoins(broadcaster, request);
     }
@@ -5044,7 +5024,7 @@ public class Wallet extends BaseTaggableObject
     // keys back to our own keys.
 
     /**
-     * <p>Specifies that the given {@link TransactionBroadcaster}, typically a {@link PeerGroup}, should be used for
+     * <p>Specifies that the given {@link TransactionBroadcasterFactory}, typically a {@link PeerGroup}, should be used for
      * sending transactions to the Bitcoin network by default. Some sendCoins methods let you specify a broadcaster
      * explicitly, in that case, they don't use this broadcaster. If null is specified then the wallet won't attempt
      * to broadcast transactions itself.</p>
@@ -5055,13 +5035,13 @@ public class Wallet extends BaseTaggableObject
      * re-organisation of the wallet contents on the block chain. For instance, in future the wallet may choose to
      * optimise itself to reduce fees or improve privacy.</p>
      */
-    public void setTransactionBroadcaster(@Nullable org.bitcoinj.core.TransactionBroadcaster broadcaster) {
+    public void setTransactionBroadcaster(@Nullable TransactionBroadcasterFactory broadcaster) {
         Transaction[] toBroadcast = {};
         lock.lock();
         try {
-            if (vTransactionBroadcaster == broadcaster)
+            if (vTransactionBroadcasterFactory == broadcaster)
                 return;
-            vTransactionBroadcaster = broadcaster;
+            vTransactionBroadcasterFactory = broadcaster;
             if (broadcaster == null)
                 return;
             toBroadcast = pending.values().toArray(toBroadcast);
@@ -5080,7 +5060,7 @@ public class Wallet extends BaseTaggableObject
             //    never saw it, due to bugs.
             // 2) It can't really hurt.
             log.info("New broadcaster so uploading waiting tx {}", tx.getHash());
-            broadcaster.broadcastTransaction(tx);
+            broadcaster.getTransactionBroadcaster(tx);
         }
     }
 
@@ -5165,10 +5145,10 @@ public class Wallet extends BaseTaggableObject
         }
         checkState(!lock.isHeldByCurrentThread());
         ArrayList<ListenableFuture<Transaction>> futures = new ArrayList<ListenableFuture<Transaction>>(txns.size());
-        TransactionBroadcaster broadcaster = vTransactionBroadcaster;
+        TransactionBroadcasterFactory broadcaster = vTransactionBroadcasterFactory;
         for (Transaction tx : txns) {
             try {
-                final ListenableFuture<Transaction> future = broadcaster.broadcastTransaction(tx).future();
+                final ListenableFuture<Transaction> future = broadcaster.getTransactionBroadcaster(tx).future();
                 futures.add(future);
                 Futures.addCallback(future, new FutureCallback<Transaction>() {
                     @Override

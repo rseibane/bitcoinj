@@ -22,6 +22,7 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.crypto.TransactionSignature;
 import org.bitcoinj.script.Script;
@@ -49,7 +50,7 @@ public class PaymentChannelV2ServerState extends PaymentChannelServerState {
     // We currently also use the serverKey for payouts, but this is not required
     protected ECKey clientKey;
 
-    PaymentChannelV2ServerState(StoredServerChannel storedServerChannel, Wallet wallet, TransactionBroadcaster broadcaster) throws VerificationException {
+    PaymentChannelV2ServerState(StoredServerChannel storedServerChannel, Wallet wallet, TransactionBroadcasterFactory broadcaster) throws VerificationException {
         super(storedServerChannel, wallet, broadcaster);
         synchronized (storedServerChannel) {
             this.clientKey = storedServerChannel.clientKey;
@@ -57,7 +58,7 @@ public class PaymentChannelV2ServerState extends PaymentChannelServerState {
         }
     }
 
-    public PaymentChannelV2ServerState(TransactionBroadcaster broadcaster, Wallet wallet, ECKey serverKey, long minExpireTime) {
+    public PaymentChannelV2ServerState(TransactionBroadcasterFactory broadcaster, Wallet wallet, ECKey serverKey, long minExpireTime) {
         super(broadcaster, wallet, serverKey, minExpireTime);
         stateMachine.transition(State.WAITING_FOR_MULTISIG_CONTRACT);
     }
@@ -201,7 +202,7 @@ public class PaymentChannelV2ServerState extends PaymentChannelServerState {
         stateMachine.transition(State.CLOSING);
         log.info("Closing channel, broadcasting tx {}", tx);
         // The act of broadcasting the transaction will add it to the wallet.
-        ListenableFuture<Transaction> future = broadcaster.broadcastTransaction(tx).future();
+        ListenableFuture<Transaction> future = broadcaster.getTransactionBroadcaster(tx).future();
         Futures.addCallback(future, new FutureCallback<Transaction>() {
             @Override public void onSuccess(Transaction transaction) {
                 log.info("TX {} propagated, channel successfully closed.", transaction.getHash());

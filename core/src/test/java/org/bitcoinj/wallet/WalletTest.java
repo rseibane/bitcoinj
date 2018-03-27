@@ -2956,7 +2956,7 @@ public class WalletTest extends TestWithWallet {
         // Start with an empty wallet (no HD chain).
         wallet = new Wallet(PARAMS);
         // Watch out for wallet-initiated broadcasts.
-        MockTransactionBroadcaster broadcaster = new MockTransactionBroadcaster(wallet);
+        MockTransactionBroadcasterFactory broadcaster = new MockTransactionBroadcasterFactory(wallet);
         // Send three cents to two different random keys, then add a key and mark the initial keys as compromised.
         ECKey key1 = new ECKey();
         key1.setCreationTimeSeconds(Utils.currentTimeSeconds() - (86400 * 2));
@@ -3124,7 +3124,7 @@ public class WalletTest extends TestWithWallet {
             sendMoneyToWallet(AbstractBlockChain.NewBlockType.BEST_CHAIN, CENT, address);
         }
 
-        MockTransactionBroadcaster broadcaster = new MockTransactionBroadcaster(wallet);
+        MockTransactionBroadcasterFactory broadcaster = new MockTransactionBroadcasterFactory(wallet);
 
         Date compromise = Utils.now();
         Utils.rollMockClock(86400);
@@ -3448,7 +3448,7 @@ public class WalletTest extends TestWithWallet {
     public void sendCoinsWithBroadcasterTest() throws InsufficientMoneyException {
         ECKey key = ECKey.fromPrivate(BigInteger.TEN);
         receiveATransactionAmount(wallet, myAddress, Coin.COIN);
-        MockTransactionBroadcaster broadcaster = new MockTransactionBroadcaster(wallet);
+        MockTransactionBroadcasterFactory broadcaster = new MockTransactionBroadcasterFactory(wallet);
         wallet.setTransactionBroadcaster(broadcaster);
         SendRequest req = SendRequest.to(OTHER_ADDRESS.getParameters(), key, Coin.CENT);
         wallet.sendCoins(req);

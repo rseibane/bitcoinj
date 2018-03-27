@@ -94,7 +94,7 @@ public class TestFeeLevel {
                 System.out.println(peerCount + " peers connected");
             }
         });
-        kit.peerGroup().broadcastTransaction(request.tx).future().get();
+        kit.peerGroup().getTransactionBroadcaster(request.tx).future().get();
         System.out.println("Send complete, waiting for confirmation");
         request.tx.getConfidence().getDepthFuture(1).get();
 

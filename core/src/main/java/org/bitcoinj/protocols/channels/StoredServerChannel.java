@@ -16,6 +16,7 @@
 
 package org.bitcoinj.protocols.channels;
 
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.wallet.Wallet;
 
@@ -102,9 +103,9 @@ public class StoredServerChannel {
      *
      * @param wallet The wallet which holds the {@link PaymentChannelServerState} in which this is saved and which will
      *               be used to complete transactions
-     * @param broadcaster The {@link TransactionBroadcaster} which will be used to broadcast contract/payment transactions.
+     * @param broadcaster The {@link TransactionBroadcasterFactory} which will be used to broadcast contract/payment transactions.
      */
-    public synchronized PaymentChannelServerState getOrCreateState(Wallet wallet, TransactionBroadcaster broadcaster) throws VerificationException {
+    public synchronized PaymentChannelServerState getOrCreateState(Wallet wallet, TransactionBroadcasterFactory broadcaster) throws VerificationException {
         if (state == null) {
             switch (majorVersion) {
                 case 1:

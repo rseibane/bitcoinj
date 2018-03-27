@@ -19,7 +19,7 @@ package org.bitcoinj.protocols.channels;
 
 import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.Sha256Hash;
-import org.bitcoinj.core.TransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.net.NioServer;
 import org.bitcoinj.net.ProtobufConnection;
 import org.bitcoinj.net.StreamConnectionFactory;
@@ -46,7 +46,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 public class PaymentChannelServerListener {
     // The wallet and peergroup which are used to complete/broadcast transactions
     private final Wallet wallet;
-    private final TransactionBroadcaster broadcaster;
+    private final TransactionBroadcasterFactory broadcaster;
 
     // The event handler factory which creates new ServerConnectionEventHandler per connection
     private final HandlerFactory eventHandlerFactory;
@@ -166,7 +166,7 @@ public class PaymentChannelServerListener {
      *                               channel) should generally be chosen.
      * @param eventHandlerFactory A factory which generates event handlers which are created for each new connection
      */
-    public PaymentChannelServerListener(TransactionBroadcaster broadcaster, Wallet wallet,
+    public PaymentChannelServerListener(TransactionBroadcasterFactory broadcaster, Wallet wallet,
                                         final int timeoutSeconds, Coin minAcceptedChannelSize,
                                         HandlerFactory eventHandlerFactory) throws IOException {
         this.wallet = checkNotNull(wallet);

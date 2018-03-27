@@ -26,6 +26,8 @@ import com.google.common.util.concurrent.*;
 import com.squareup.okhttp.*;
 import com.subgraph.orchid.*;
 import net.jcip.annotations.*;
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.listeners.*;
 import org.bitcoinj.crypto.*;
 import org.bitcoinj.net.*;
@@ -69,7 +71,7 @@ import static com.google.common.base.Preconditions.*;
  * of PeerGroup are safe to call from a UI thread as some may do network IO, 
  * but starting and stopping the service should be fine.</p>
  */
-public class PeerGroup implements TransactionBroadcaster {
+public class PeerGroup implements TransactionBroadcasterFactory {
     private static final Logger log = LoggerFactory.getLogger(PeerGroup.class);
 
     // All members in this class should be marked with final, volatile, @GuardedBy or a mix as appropriate to define
@@ -224,7 +226,7 @@ public class PeerGroup implements TransactionBroadcaster {
     // This is a synchronized set, so it locks on itself. We use it to prevent TransactionBroadcast objects from
     // being garbage collected if nothing in the apps code holds on to them transitively. See the discussion
     // in broadcastTransaction.
-    private final Set<TransactionBroadcast> runningBroadcasts;
+    private final Set<PeerGroupTransactionBroadcaster> runningBroadcasts;
 
     private class PeerListener implements GetDataEventListener, BlocksDownloadedEventListener {
 
@@ -435,7 +437,7 @@ public class PeerGroup implements TransactionBroadcaster {
         pendingPeers = new CopyOnWriteArrayList<Peer>();
         channels = connectionManager;
         peerDiscoverers = new CopyOnWriteArraySet<PeerDiscovery>();
-        runningBroadcasts = Collections.synchronizedSet(new HashSet<TransactionBroadcast>());
+        runningBroadcasts = Collections.synchronizedSet(new HashSet<PeerGroupTransactionBroadcaster>());
         bloomFilterMerger = new FilterMerger(DEFAULT_BLOOM_FILTER_FP_RATE);
         vMinRequiredProtocolVersion = params.getProtocolVersionNum(NetworkParameters.ProtocolVersion.BLOOM_FILTER);
     }
@@ -2097,7 +2099,7 @@ public class PeerGroup implements TransactionBroadcaster {
 
     /**
      * Returns the number of connections that are required before transactions will be broadcast. If there aren't
-     * enough, {@link PeerGroup#broadcastTransaction(Transaction)} will wait until the minimum number is reached so
+     * enough, {@link PeerGroup#getTransactionBroadcaster(Transaction)} will wait until the minimum number is reached so
      * propagation across the network can be observed. If no value has been set using
      * {@link PeerGroup#setMinBroadcastConnections(int)} a default of 80% of whatever
      * {@link org.bitcoinj.core.PeerGroup#getMaxConnections()} returns is used.
@@ -2135,14 +2137,14 @@ public class PeerGroup implements TransactionBroadcaster {
      * of connections to wait for before commencing broadcast.
      */
     @Override
-    public TransactionBroadcast broadcastTransaction(final Transaction tx) {
+    public PeerGroupTransactionBroadcaster getTransactionBroadcaster(final Transaction tx) {
         return broadcastTransaction(tx, Math.max(1, getMinBroadcastConnections()));
     }
 
     /**
      * <p>Given a transaction, sends it un-announced to one peer and then waits for it to be received back from other
      * peers. Once all connected peers have announced the transaction, the future available via the
-     * {@link org.bitcoinj.core.TransactionBroadcast#future()} method will be completed. If anything goes
+     * {@link PeerGroupTransactionBroadcaster#future()} method will be completed. If anything goes
      * wrong the exception will be thrown when get() is called, or you can receive it via a callback on the
      * {@link ListenableFuture}. This method returns immediately, so if you want it to block just call get() on the
      * result.</p>
@@ -2154,17 +2156,17 @@ public class PeerGroup implements TransactionBroadcaster {
      * A good choice for proportion would be between 0.5 and 0.8 but if you want faster transmission during initial
      * bringup of the peer group you can lower it.</p>
      *
-     * <p>The returned {@link org.bitcoinj.core.TransactionBroadcast} object can be used to get progress feedback,
+     * <p>The returned {@link PeerGroupTransactionBroadcaster} object can be used to get progress feedback,
      * which is calculated by watching the transaction propagate across the network and be announced by peers.</p>
      */
-    public TransactionBroadcast broadcastTransaction(final Transaction tx, final int minConnections) {
+    public PeerGroupTransactionBroadcaster broadcastTransaction(final Transaction tx, final int minConnections) {
         // If we don't have a record of where this tx came from already, set it to be ourselves so Peer doesn't end up
         // redownloading it from the network redundantly.
         if (tx.getConfidence().getSource().equals(TransactionConfidence.Source.UNKNOWN)) {
             log.info("Transaction source unknown, setting to SELF: {}", tx.getHashAsString());
             tx.getConfidence().setSource(TransactionConfidence.Source.SELF);
         }
-        final TransactionBroadcast broadcast = new TransactionBroadcast(this, tx);
+        final PeerGroupTransactionBroadcaster broadcast = new PeerGroupTransactionBroadcaster(this, tx);
         broadcast.setMinConnections(minConnections);
         // Send the TX to the wallet once we have a successful broadcast.
         Futures.addCallback(broadcast.future(), new FutureCallback<Transaction>() {

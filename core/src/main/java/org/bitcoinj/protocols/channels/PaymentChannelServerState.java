@@ -16,6 +16,7 @@
 
 package org.bitcoinj.protocols.channels;
 
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.wallet.SendRequest;
 import org.bitcoinj.wallet.Wallet;
 
@@ -96,7 +97,7 @@ public abstract class PaymentChannelServerState {
     final Wallet wallet;
 
     // The object that will broadcast transactions for us - usually a peer group.
-    protected final TransactionBroadcaster broadcaster;
+    protected final TransactionBroadcasterFactory broadcaster;
 
     // The last signature the client provided for a payment transaction.
     protected byte[] bestValueSignature;
@@ -114,7 +115,7 @@ public abstract class PaymentChannelServerState {
     // The contract and the output script from it
     protected Transaction contract = null;
 
-    PaymentChannelServerState(StoredServerChannel storedServerChannel, Wallet wallet, TransactionBroadcaster broadcaster) throws VerificationException {
+    PaymentChannelServerState(StoredServerChannel storedServerChannel, Wallet wallet, TransactionBroadcasterFactory broadcaster) throws VerificationException {
         synchronized (storedServerChannel) {
             this.stateMachine = new StateMachine<State>(State.UNINITIALISED, getStateTransitions());
             this.wallet = checkNotNull(wallet);
@@ -139,7 +140,7 @@ public abstract class PaymentChannelServerState {
      *                  (this MUST be fresh and CANNOT be used elsewhere)
      * @param minExpireTime The earliest time at which the client can claim the refund transaction (UNIX timestamp of block)
      */
-    public PaymentChannelServerState(TransactionBroadcaster broadcaster, Wallet wallet, ECKey serverKey, long minExpireTime) {
+    public PaymentChannelServerState(TransactionBroadcasterFactory broadcaster, Wallet wallet, ECKey serverKey, long minExpireTime) {
         this.stateMachine = new StateMachine<State>(State.UNINITIALISED, getStateTransitions());
         this.serverKey = checkNotNull(serverKey);
         this.wallet = checkNotNull(wallet);
@@ -191,7 +192,7 @@ public abstract class PaymentChannelServerState {
         wallet.addWatchedScripts(ImmutableList.of(contract.getOutput(0).getScriptPubKey()));
         stateMachine.transition(State.WAITING_FOR_MULTISIG_ACCEPTANCE);
         final SettableFuture<PaymentChannelServerState> future = SettableFuture.create();
-        Futures.addCallback(broadcaster.broadcastTransaction(contract).future(), new FutureCallback<Transaction>() {
+        Futures.addCallback(broadcaster.getTransactionBroadcaster(contract).future(), new FutureCallback<Transaction>() {
             @Override public void onSuccess(Transaction transaction) {
                 log.info("Successfully broadcast multisig contract {}. Channel now open.", transaction.getHashAsString());
                 try {

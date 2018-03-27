@@ -16,6 +16,8 @@
 
 package org.bitcoinj.protocols.channels;
 
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.ScriptBuilder;
@@ -51,7 +53,7 @@ public class PaymentChannelStateTest extends TestWithWallet {
     private Wallet serverWallet;
     private PaymentChannelServerState serverState;
     private PaymentChannelClientState clientState;
-    private TransactionBroadcaster mockBroadcaster;
+    private TransactionBroadcasterFactory mockBroadcaster;
     private BlockingQueue<TxFuturePair> broadcasts;
     private static final Coin HALF_COIN = Coin.valueOf(0, 50);
 
@@ -92,9 +94,9 @@ public class PaymentChannelStateTest extends TestWithWallet {
         Utils.setMockClock(); // Use mock clock
         super.setUp();
         Context.propagate(new Context(PARAMS, 100, Coin.ZERO, false));
-        wallet.addExtension(new StoredPaymentChannelClientStates(wallet, new TransactionBroadcaster() {
+        wallet.addExtension(new StoredPaymentChannelClientStates(wallet, new TransactionBroadcasterFactory() {
             @Override
-            public TransactionBroadcast broadcastTransaction(Transaction tx) {
+            public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
                 fail();
                 return null;
             }
@@ -106,12 +108,12 @@ public class PaymentChannelStateTest extends TestWithWallet {
         chain.addWallet(serverWallet);
 
         broadcasts = new LinkedBlockingQueue<TxFuturePair>();
-        mockBroadcaster = new TransactionBroadcaster() {
+        mockBroadcaster = new TransactionBroadcasterFactory() {
             @Override
-            public TransactionBroadcast broadcastTransaction(Transaction tx) {
+            public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
                 SettableFuture<Transaction> future = SettableFuture.create();
                 broadcasts.add(new TxFuturePair(tx, future));
-                return TransactionBroadcast.createMockBroadcast(tx, future);
+                return PeerGroupTransactionBroadcaster.createMockBroadcast(tx, future);
             }
         };
     }
@@ -134,7 +136,7 @@ public class PaymentChannelStateTest extends TestWithWallet {
         }
     }
 
-    private PaymentChannelServerState makeServerState(TransactionBroadcaster broadcaster, Wallet wallet, ECKey serverKey, long time) {
+    private PaymentChannelServerState makeServerState(TransactionBroadcasterFactory broadcaster, Wallet wallet, ECKey serverKey, long time) {
         switch (versionSelector) {
             case VERSION_1:
                 return new PaymentChannelV1ServerState(broadcaster, wallet, serverKey, time);

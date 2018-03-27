@@ -18,6 +18,7 @@ package org.bitcoinj.protocols.channels;
 
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.utils.Threading;
 import org.bitcoinj.wallet.Wallet;
@@ -43,7 +44,7 @@ import static com.google.common.base.Preconditions.checkState;
 
 /**
  * This class maintains a set of {@link StoredClientChannel}s, automatically (re)broadcasting the contract transaction
- * and broadcasting the refund transaction over the given {@link TransactionBroadcaster}.
+ * and broadcasting the refund transaction over the given {@link TransactionBroadcasterFactory}.
  */
 public class StoredPaymentChannelClientStates implements WalletExtension {
     private static final Logger log = LoggerFactory.getLogger(StoredPaymentChannelClientStates.class);
@@ -54,16 +55,16 @@ public class StoredPaymentChannelClientStates implements WalletExtension {
     @VisibleForTesting final Timer channelTimeoutHandler = new Timer(true);
 
     private Wallet containingWallet;
-    private final SettableFuture<TransactionBroadcaster> announcePeerGroupFuture = SettableFuture.create();
+    private final SettableFuture<TransactionBroadcasterFactory> announcePeerGroupFuture = SettableFuture.create();
 
     protected final ReentrantLock lock = Threading.lock("StoredPaymentChannelClientStates");
 
     /**
      * Creates a new StoredPaymentChannelClientStates and associates it with the given {@link Wallet} and
-     * {@link TransactionBroadcaster} which are used to complete and announce contract and refund
+     * {@link TransactionBroadcasterFactory} which are used to complete and announce contract and refund
      * transactions.
      */
-    public StoredPaymentChannelClientStates(@Nullable Wallet containingWallet, TransactionBroadcaster announcePeerGroup) {
+    public StoredPaymentChannelClientStates(@Nullable Wallet containingWallet, TransactionBroadcasterFactory announcePeerGroup) {
         setTransactionBroadcaster(announcePeerGroup);
         this.containingWallet = containingWallet;
     }
@@ -81,10 +82,10 @@ public class StoredPaymentChannelClientStates implements WalletExtension {
      * Use this setter if the broadcaster is not available during instantiation and you're not using WalletAppKit.
      * This setter will let you delay the setting of the broadcaster until the Bitcoin network is ready.
      *
-     * @param transactionBroadcaster which is used to complete and announce contract and refund transactions.
+     * @param transactionBroadcasterFactory which is used to complete and announce contract and refund transactions.
      */
-    public final void setTransactionBroadcaster(TransactionBroadcaster transactionBroadcaster) {
-        this.announcePeerGroupFuture.set(checkNotNull(transactionBroadcaster));
+    public final void setTransactionBroadcaster(TransactionBroadcasterFactory transactionBroadcasterFactory) {
+        this.announcePeerGroupFuture.set(checkNotNull(transactionBroadcasterFactory));
     }
 
     /** Returns this extension from the given wallet, or null if no such extension was added. */
@@ -219,10 +220,10 @@ public class StoredPaymentChannelClientStates implements WalletExtension {
                 @Override
                 public void run() {
                     try {
-                        TransactionBroadcaster announcePeerGroup = getAnnouncePeerGroup();
+                        TransactionBroadcasterFactory announcePeerGroup = getAnnouncePeerGroup();
                         removeChannel(channel);
-                        announcePeerGroup.broadcastTransaction(channel.contract);
-                        announcePeerGroup.broadcastTransaction(channel.refund);
+                        announcePeerGroup.getTransactionBroadcaster(channel.contract);
+                        announcePeerGroup.getTransactionBroadcaster(channel.refund);
                     } catch (Exception e) {
                         // Something went wrong closing the channel - we catch
                         // here or else we take down the whole Timer.
@@ -242,7 +243,7 @@ public class StoredPaymentChannelClientStates implements WalletExtension {
      * If the peer group has not been set for MAX_SECONDS_TO_WAIT_FOR_BROADCASTER_TO_BE_SET seconds, then
      * the programmer probably forgot to set it and we should throw exception.
      */
-    private TransactionBroadcaster getAnnouncePeerGroup() {
+    private TransactionBroadcasterFactory getAnnouncePeerGroup() {
         try {
             return announcePeerGroupFuture.get(MAX_SECONDS_TO_WAIT_FOR_BROADCASTER_TO_BE_SET, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
@@ -261,7 +262,7 @@ public class StoredPaymentChannelClientStates implements WalletExtension {
      * this wallet extension.</p>
      *
      * <p>Note that the channel will still have its contract and refund transactions broadcast via the connected
-     * {@link TransactionBroadcaster} as long as this {@link StoredPaymentChannelClientStates} continues to
+     * {@link TransactionBroadcasterFactory} as long as this {@link StoredPaymentChannelClientStates} continues to
      * exist in memory.</p>
      */
     void removeChannel(StoredClientChannel channel) {

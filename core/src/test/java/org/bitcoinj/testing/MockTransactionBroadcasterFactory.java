@@ -16,6 +16,8 @@
 
 package org.bitcoinj.testing;
 
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.utils.Threading;
 import org.bitcoinj.wallet.Wallet;
@@ -33,7 +35,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * the broadcast to be seen as if it never propagated though, so you may instead use {@link #waitForTxFuture()} and then
  * set the returned future when you want the "broadcast" to be completed.
  */
-public class MockTransactionBroadcaster implements TransactionBroadcaster {
+public class MockTransactionBroadcasterFactory implements TransactionBroadcasterFactory {
     private final ReentrantLock lock = Threading.lock("mock tx broadcaster");
     private final Wallet wallet;
 
@@ -55,7 +57,7 @@ public class MockTransactionBroadcaster implements TransactionBroadcaster {
     private final LinkedBlockingQueue<TxFuturePair> broadcasts = new LinkedBlockingQueue<TxFuturePair>();
 
     /** Sets this mock broadcaster on the given wallet. */
-    public MockTransactionBroadcaster(Wallet wallet) {
+    public MockTransactionBroadcasterFactory(Wallet wallet) {
         // This code achieves nothing directly, but it sets up the broadcaster/peergroup > wallet lock ordering
         // so inversions can be caught.
         lock.lock();
@@ -69,7 +71,7 @@ public class MockTransactionBroadcaster implements TransactionBroadcaster {
     }
 
     @Override
-    public TransactionBroadcast broadcastTransaction(Transaction tx) {
+    public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
         // Use a lock just to catch lock ordering inversions e.g. wallet->broadcaster.
         lock.lock();
         try {
@@ -89,7 +91,7 @@ public class MockTransactionBroadcaster implements TransactionBroadcaster {
                 public void onFailure(Throwable t) {
                 }
             });
-            return TransactionBroadcast.createMockBroadcast(tx, result);
+            return PeerGroupTransactionBroadcaster.createMockBroadcast(tx, result);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {

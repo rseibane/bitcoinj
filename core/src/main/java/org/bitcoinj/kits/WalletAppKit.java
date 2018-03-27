@@ -20,6 +20,7 @@ package org.bitcoinj.kits;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.*;
 import com.subgraph.orchid.*;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.listeners.*;
 import org.bitcoinj.core.*;
 import org.bitcoinj.net.discovery.*;
@@ -441,16 +442,16 @@ public class WalletAppKit extends AbstractIdleService {
      * As soon as the transaction broadcaster han been created we will pass it to the
      * payment channel extensions
      */
-    private void completeExtensionInitiations(TransactionBroadcaster transactionBroadcaster) {
+    private void completeExtensionInitiations(TransactionBroadcasterFactory transactionBroadcasterFactory) {
         StoredPaymentChannelClientStates clientStoredChannels = (StoredPaymentChannelClientStates)
                 vWallet.getExtensions().get(StoredPaymentChannelClientStates.class.getName());
         if(clientStoredChannels != null) {
-            clientStoredChannels.setTransactionBroadcaster(transactionBroadcaster);
+            clientStoredChannels.setTransactionBroadcaster(transactionBroadcasterFactory);
         }
         StoredPaymentChannelServerStates serverStoredChannels = (StoredPaymentChannelServerStates)
                 vWallet.getExtensions().get(StoredPaymentChannelServerStates.class.getName());
         if(serverStoredChannels != null) {
-            serverStoredChannels.setTransactionBroadcaster(transactionBroadcaster);
+            serverStoredChannels.setTransactionBroadcaster(transactionBroadcasterFactory);
         }
     }
 

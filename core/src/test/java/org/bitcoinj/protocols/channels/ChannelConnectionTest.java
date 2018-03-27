@@ -16,6 +16,8 @@
 
 package org.bitcoinj.protocols.channels;
 
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.testing.TestWithWallet;
 import org.bitcoinj.utils.Threading;
@@ -59,12 +61,12 @@ public class ChannelConnectionTest extends TestWithWallet {
     private Wallet serverWallet;
     private AtomicBoolean fail;
     private BlockingQueue<Transaction> broadcasts;
-    private TransactionBroadcaster mockBroadcaster;
+    private TransactionBroadcasterFactory mockBroadcaster;
     private Semaphore broadcastTxPause;
 
-    private static final TransactionBroadcaster failBroadcaster = new TransactionBroadcaster() {
+    private static final TransactionBroadcasterFactory failBroadcaster = new TransactionBroadcasterFactory() {
         @Override
-        public TransactionBroadcast broadcastTransaction(Transaction tx) {
+        public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
             fail();
             return null;
         }
@@ -118,14 +120,14 @@ public class ChannelConnectionTest extends TestWithWallet {
         // to the broadcastTxPause semaphore so state can be queried in between.
         broadcasts = new LinkedBlockingQueue<Transaction>();
         broadcastTxPause = new Semaphore(0);
-        mockBroadcaster = new TransactionBroadcaster() {
+        mockBroadcaster = new TransactionBroadcasterFactory() {
             @Override
-            public TransactionBroadcast broadcastTransaction(Transaction tx) {
+            public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
                 broadcastTxPause.acquireUninterruptibly();
                 SettableFuture<Transaction> future = SettableFuture.create();
                 future.set(tx);
                 broadcasts.add(tx);
-                return TransactionBroadcast.createMockBroadcast(tx, future);
+                return PeerGroupTransactionBroadcaster.createMockBroadcast(tx, future);
             }
         };
 

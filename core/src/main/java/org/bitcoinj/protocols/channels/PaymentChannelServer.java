@@ -17,6 +17,7 @@
 package org.bitcoinj.protocols.channels;
 
 import com.google.common.collect.ImmutableMap;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.protocols.channels.PaymentChannelCloseException.CloseReason;
 import org.bitcoinj.utils.Threading;
@@ -130,7 +131,7 @@ public class PaymentChannelServer {
 
     // The wallet and peergroup which are used to complete/broadcast transactions
     private final Wallet wallet;
-    private final TransactionBroadcaster broadcaster;
+    private final TransactionBroadcasterFactory broadcaster;
 
     // The key used for multisig in this channel
     @GuardedBy("lock") private ECKey myKey;
@@ -176,7 +177,7 @@ public class PaymentChannelServer {
      * @param conn A callback listener which represents the connection to the client (forwards messages we generate to
      *             the client and will close the connection on request)
      */
-    public PaymentChannelServer(TransactionBroadcaster broadcaster, Wallet wallet,
+    public PaymentChannelServer(TransactionBroadcasterFactory broadcaster, Wallet wallet,
                                 Coin minAcceptedChannelSize, ServerConnection conn) {
         this(broadcaster, wallet, minAcceptedChannelSize, DEFAULT_MIN_TIME_WINDOW, DEFAULT_MAX_TIME_WINDOW, conn);
     }
@@ -198,7 +199,7 @@ public class PaymentChannelServer {
      * @param conn A callback listener which represents the connection to the client (forwards messages we generate to
      *              the client and will close the connection on request)
      */
-    public PaymentChannelServer(TransactionBroadcaster broadcaster, Wallet wallet,
+    public PaymentChannelServer(TransactionBroadcasterFactory broadcaster, Wallet wallet,
                                 Coin minAcceptedChannelSize, long minTimeWindow, long maxTimeWindow, ServerConnection conn) {
         if (minTimeWindow > maxTimeWindow) throw new IllegalArgumentException("minTimeWindow must be less or equal to maxTimeWindow");
         if (minTimeWindow < HARD_MIN_TIME_WINDOW) throw new IllegalArgumentException("minTimeWindow must be larger than" + HARD_MIN_TIME_WINDOW  + " seconds");

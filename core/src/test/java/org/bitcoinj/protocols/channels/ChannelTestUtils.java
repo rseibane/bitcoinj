@@ -16,7 +16,7 @@ package org.bitcoinj.protocols.channels;
 
 import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.Sha256Hash;
-import org.bitcoinj.core.TransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.wallet.Wallet;
 
 import com.google.common.base.Objects;
@@ -136,10 +136,10 @@ public class ChannelTestUtils {
         public RecordingClientConnection clientRecorder;
     }
 
-    public static RecordingPair makeRecorders(final Wallet serverWallet, final TransactionBroadcaster mockBroadcaster) {
+    public static RecordingPair makeRecorders(final Wallet serverWallet, final TransactionBroadcasterFactory mockBroadcaster) {
         return makeRecorders(serverWallet, mockBroadcaster, RecordingClientConnection.IGNORE_EXPIRE);
     }
-    public static RecordingPair makeRecorders(final Wallet serverWallet, final TransactionBroadcaster mockBroadcaster, int maxExpireTime) {
+    public static RecordingPair makeRecorders(final Wallet serverWallet, final TransactionBroadcasterFactory mockBroadcaster, int maxExpireTime) {
         RecordingPair pair = new RecordingPair();
         pair.serverRecorder = new RecordingServerConnection();
         pair.server = new PaymentChannelServer(mockBroadcaster, serverWallet, Coin.COIN, pair.serverRecorder);

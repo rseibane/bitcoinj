@@ -14,21 +14,26 @@
  * limitations under the License.
  */
 
-package org.bitcoinj.core;
+package org.bitcoinj.broadcast.group;
 
-import com.google.common.annotations.*;
-import com.google.common.base.*;
-import com.google.common.util.concurrent.*;
-import org.bitcoinj.utils.*;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+import org.bitcoinj.broadcast.BroadcastTransactionListener;
+import org.bitcoinj.broadcast.TransactionBroadcaster;
+import org.bitcoinj.broadcast.group.strategy.RatioOfConnectedRandomlyPeerGroupStrategy;
+import org.bitcoinj.core.*;
+import org.bitcoinj.core.listeners.PreMessageReceivedEventListener;
+import org.bitcoinj.utils.Threading;
 import org.bitcoinj.wallet.Wallet;
-import org.slf4j.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.annotation.*;
+import javax.annotation.Nullable;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.Executor;
 
 import static com.google.common.base.Preconditions.checkState;
-import org.bitcoinj.core.listeners.PreMessageReceivedEventListener;
 
 /**
  * Represents a single transaction broadcast that we are performing. A broadcast occurs after a new transaction is created
@@ -37,37 +42,48 @@ import org.bitcoinj.core.listeners.PreMessageReceivedEventListener;
  * is defined as not reaching acceptance within a timeout period, or getting an explicit reject message from a peer
  * indicating that the transaction was not acceptable.
  */
-public class TransactionBroadcast {
-    private static final Logger log = LoggerFactory.getLogger(TransactionBroadcast.class);
+public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
+
+    /**
+     * Used for shuffling the peers before broadcast: unit tests can replace this to make themselves deterministic.
+     */
+    @VisibleForTesting
+    public static Random random = new Random();
+
+    private static final Logger log = LoggerFactory.getLogger(PeerGroupTransactionBroadcaster.class);
 
     private final SettableFuture<Transaction> future = SettableFuture.create();
     private final PeerGroup peerGroup;
     private final Transaction tx;
     private int minConnections;
-    private int numWaitingFor;
+    private BroadcastPeerGroupStrategy peerGroupBroadcastStrategy;
 
-    /** Used for shuffling the peers before broadcast: unit tests can replace this to make themselves deterministic. */
-    @VisibleForTesting
-    public static Random random = new Random();
-    
+    @Nullable
+    private BroadcastProgressCallback callback;
+    @Nullable
+    private Executor progressCallbackExecutor;
+
+    private int numSeemPeers;
+    private boolean mined;
+
     // Tracks which nodes sent us a reject message about this broadcast, if any. Useful for debugging.
     private Map<Peer, RejectMessage> rejects = Collections.synchronizedMap(new HashMap<Peer, RejectMessage>());
 
-    TransactionBroadcast(PeerGroup peerGroup, Transaction tx) {
+    public PeerGroupTransactionBroadcaster(PeerGroup peerGroup, Transaction tx) {
         this.peerGroup = peerGroup;
         this.tx = tx;
         this.minConnections = Math.max(1, peerGroup.getMinBroadcastConnections());
+        this.peerGroupBroadcastStrategy = new RatioOfConnectedRandomlyPeerGroupStrategy(.5f, .25f);
     }
 
     // Only for mock broadcasts.
-    private TransactionBroadcast(Transaction tx) {
-        this.peerGroup = null;
-        this.tx = tx;
+    private PeerGroupTransactionBroadcaster(Transaction tx) {
+        this(null, tx);
     }
 
     @VisibleForTesting
-    public static TransactionBroadcast createMockBroadcast(Transaction tx, final SettableFuture<Transaction> future) {
-        return new TransactionBroadcast(tx) {
+    public static PeerGroupTransactionBroadcaster createMockBroadcast(Transaction tx, final SettableFuture<Transaction> future) {
+        return new PeerGroupTransactionBroadcaster(tx) {
             @Override
             public ListenableFuture<Transaction> broadcast() {
                 return future;
@@ -92,11 +108,11 @@ public class TransactionBroadcast {
         @Override
         public Message onPreMessageReceived(Peer peer, Message m) {
             if (m instanceof RejectMessage) {
-                RejectMessage rejectMessage = (RejectMessage)m;
+                RejectMessage rejectMessage = (RejectMessage) m;
                 if (tx.getHash().equals(rejectMessage.getRejectedObjectHash())) {
                     rejects.put(peer, rejectMessage);
                     int size = rejects.size();
-                    long threshold = Math.round(numWaitingFor / 2.0);
+                    long threshold = Math.round(peerGroupBroadcastStrategy.getBroadcastTargetSize() / 2.0);
                     if (size > threshold) {
                         log.warn("Threshold for considering broadcast rejected has been reached ({}/{})", size, threshold);
                         future.setException(new RejectedTransactionException(tx, rejectMessage));
@@ -115,6 +131,11 @@ public class TransactionBroadcast {
         return future;
     }
 
+    @Override
+    public void broadcast(Transaction tx, BroadcastTransactionListener listener) {
+
+    }
+
     private class EnoughAvailablePeers implements Runnable {
         @Override
         public void run() {
@@ -127,7 +148,7 @@ public class TransactionBroadcast {
             // wait for it to show up on one of the other two. This will be taken as sign of network acceptance. As can
             // be seen, 4 peers is probably too little - it doesn't taken many broken peers for tx propagation to have
             // a big effect.
-            List<Peer> peers = peerGroup.getConnectedPeers();    // snapshots
+            List<Peer> peers = peerGroupBroadcastStrategy.choosePeers(peerGroup);
             // Prepare to send the transaction by adding a listener that'll be called when confidence changes.
             // Only bother with this if we might actually hear back:
             if (minConnections > 1)
@@ -140,13 +161,8 @@ public class TransactionBroadcast {
             // transaction or not. However, we are not a fully validating node and this is advertised in
             // our version message, as SPV nodes cannot relay it doesn't give away any additional information
             // to skip the inv here - we wouldn't send invs anyway.
-            int numConnected = peers.size();
-            int numToBroadcastTo = (int) Math.max(1, Math.round(Math.ceil(peers.size() / 2.0)));
-            numWaitingFor = (int) Math.ceil((peers.size() - numToBroadcastTo) / 2.0);
-            Collections.shuffle(peers, random);
-            peers = peers.subList(0, numToBroadcastTo);
+            int numConnected = peerGroup.getConnectedPeers().size();
             log.info("broadcastTransaction: We have {} peers, adding {} to the memory pool", numConnected, tx.getHashAsString());
-            log.info("Sending to {} peers, will wait for {}, sending to: {}", numToBroadcastTo, numWaitingFor, Joiner.on(",").join(peers));
             for (Peer peer : peers) {
                 try {
                     peer.sendMessage(tx);
@@ -167,9 +183,6 @@ public class TransactionBroadcast {
         }
     }
 
-    private int numSeemPeers;
-    private boolean mined;
-
     private class ConfidenceChange implements TransactionConfidence.Listener {
         @Override
         public void onConfidenceChanged(TransactionConfidence conf, ChangeReason reason) {
@@ -180,9 +193,9 @@ public class TransactionBroadcast {
                     numSeenPeers, mined ? " and mined" : "");
 
             // Progress callback on the requested thread.
-            invokeAndRecord(numSeenPeers, mined);
+            onBroadcastProgress(numSeenPeers, mined);
 
-            if (numSeenPeers >= numWaitingFor || mined) {
+            if (numSeenPeers >= peerGroupBroadcastStrategy.getBroadcastTargetSize() || mined) {
                 // We've seen the min required number of peers announce the transaction, or it was included
                 // in a block. Normally we'd expect to see it fully propagate before it gets mined, but
                 // it can be that a block is solved very soon after broadcast, and it's also possible that
@@ -204,23 +217,24 @@ public class TransactionBroadcast {
         }
     }
 
-    private void invokeAndRecord(int numSeenPeers, boolean mined) {
+    private void onBroadcastProgress(int numSeenPeers, boolean mined) {
         synchronized (this) {
             this.numSeemPeers = numSeenPeers;
             this.mined = mined;
         }
-        invokeProgressCallback(numSeenPeers, mined);
+        notifyBroadcastProgress(numSeenPeers, mined);
     }
 
-    private void invokeProgressCallback(int numSeenPeers, boolean mined) {
-        final ProgressCallback callback;
+    private void notifyBroadcastProgress(int numSeenPeers, boolean mined) {
+        final BroadcastProgressCallback callback;
         Executor executor;
         synchronized (this) {
             callback = this.callback;
             executor = this.progressCallbackExecutor;
         }
         if (callback != null) {
-            final double progress = Math.min(1.0, mined ? 1.0 : numSeenPeers / (double) numWaitingFor);
+            int targetPeers = peerGroupBroadcastStrategy.getBroadcastTargetSize();
+            final double progress = Math.min(1.0, mined ? 1.0 : numSeenPeers / (double) targetPeers);
             checkState(progress >= 0.0 && progress <= 1.0, progress);
             try {
                 if (executor == null)
@@ -238,28 +252,12 @@ public class TransactionBroadcast {
         }
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    /** An interface for receiving progress information on the propagation of the tx, from 0.0 to 1.0 */
-    public interface ProgressCallback {
-        /**
-         * onBroadcastProgress will be invoked on the provided executor when the progress of the transaction
-         * broadcast has changed, because the transaction has been announced by another peer or because the transaction
-         * was found inside a mined block (in this case progress will go to 1.0 immediately). Any exceptions thrown
-         * by this callback will be logged and ignored.
-         */
-        void onBroadcastProgress(double progress);
-    }
-
-    @Nullable private ProgressCallback callback;
-    @Nullable private Executor progressCallbackExecutor;
-
     /**
      * Sets the given callback for receiving progress values, which will run on the user thread. See
      * {@link org.bitcoinj.utils.Threading} for details.  If the broadcast has already started then the callback will
      * be invoked immediately with the current progress.
      */
-    public void setProgressCallback(ProgressCallback callback) {
+    public void setProgressCallback(BroadcastProgressCallback callback) {
         setProgressCallback(callback, Threading.USER_THREAD);
     }
 
@@ -269,7 +267,7 @@ public class TransactionBroadcast {
      * probably want to provide your UI thread or Threading.USER_THREAD for the second parameter. If the broadcast
      * has already started then the callback will be invoked immediately with the current progress.
      */
-    public void setProgressCallback(ProgressCallback callback, @Nullable Executor executor) {
+    public void setProgressCallback(BroadcastProgressCallback callback, @Nullable Executor executor) {
         boolean shouldInvoke;
         int num;
         boolean mined;
@@ -278,9 +276,9 @@ public class TransactionBroadcast {
             this.progressCallbackExecutor = executor;
             num = this.numSeemPeers;
             mined = this.mined;
-            shouldInvoke = numWaitingFor > 0;
+            shouldInvoke = peerGroupBroadcastStrategy.getBroadcastTargetSize() > 0;
         }
         if (shouldInvoke)
-            invokeProgressCallback(num, mined);
+            notifyBroadcastProgress(num, mined);
     }
 }

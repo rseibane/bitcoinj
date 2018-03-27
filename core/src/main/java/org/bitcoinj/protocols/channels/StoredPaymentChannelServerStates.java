@@ -17,6 +17,7 @@
 package org.bitcoinj.protocols.channels;
 
 import com.google.common.collect.ImmutableMap;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
 import org.bitcoinj.core.*;
 import org.bitcoinj.utils.Threading;
 import org.bitcoinj.wallet.Wallet;
@@ -49,7 +50,7 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
 
     @GuardedBy("lock") @VisibleForTesting final Map<Sha256Hash, StoredServerChannel> mapChannels = new HashMap<Sha256Hash, StoredServerChannel>();
     private Wallet wallet;
-    private final SettableFuture<TransactionBroadcaster> broadcasterFuture = SettableFuture.create();
+    private final SettableFuture<TransactionBroadcasterFactory> broadcasterFuture = SettableFuture.create();
 
     private final Timer channelTimeoutHandler = new Timer(true);
 
@@ -66,9 +67,9 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
 
     /**
      * Creates a new PaymentChannelServerStateManager and associates it with the given {@link Wallet} and
-     * {@link TransactionBroadcaster} which are used to complete and announce payment transactions.
+     * {@link TransactionBroadcasterFactory} which are used to complete and announce payment transactions.
      */
-    public StoredPaymentChannelServerStates(@Nullable Wallet wallet, TransactionBroadcaster broadcaster) {
+    public StoredPaymentChannelServerStates(@Nullable Wallet wallet, TransactionBroadcasterFactory broadcaster) {
         setTransactionBroadcaster(broadcaster);
         this.wallet = wallet;
     }
@@ -88,7 +89,7 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
      *
      * @param broadcaster Used when the payment channels are closed
      */
-    public final void setTransactionBroadcaster(TransactionBroadcaster broadcaster) {
+    public final void setTransactionBroadcaster(TransactionBroadcasterFactory broadcaster) {
         this.broadcasterFuture.set(checkNotNull(broadcaster));
     }
 
@@ -117,7 +118,7 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
         synchronized (channel) {
             channel.closeConnectedHandler();
             try {
-                TransactionBroadcaster broadcaster = getBroadcaster();
+                TransactionBroadcasterFactory broadcaster = getBroadcaster();
                 channel.getOrCreateState(wallet, broadcaster).close();
             } catch (InsufficientMoneyException e) {
                 log.error("Exception when closing channel", e);
@@ -133,7 +134,7 @@ public class StoredPaymentChannelServerStates implements WalletExtension {
      * If the broadcaster has not been set for MAX_SECONDS_TO_WAIT_FOR_BROADCASTER_TO_BE_SET seconds, then
      * the programmer probably forgot to set it and we should throw exception.
      */
-    private TransactionBroadcaster getBroadcaster() {
+    private TransactionBroadcasterFactory getBroadcaster() {
         try {
             return broadcasterFuture.get(MAX_SECONDS_TO_WAIT_FOR_BROADCASTER_TO_BE_SET, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
