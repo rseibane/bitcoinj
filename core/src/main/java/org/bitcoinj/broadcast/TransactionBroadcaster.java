@@ -5,8 +5,9 @@ import org.bitcoinj.core.Transaction;
 
 public interface TransactionBroadcaster {
 
-    void broadcast(Transaction tx, BroadcastTransactionListener listener);
-
+    @Deprecated
     ListenableFuture<Transaction> future();
+
+    ListenableFuture<Transaction> broadcast();
 
 }

@@ -19,8 +19,9 @@ package org.bitcoinj.core;
 
 import com.google.common.util.concurrent.AtomicDouble;
 import com.google.common.util.concurrent.ListenableFuture;
-import org.bitcoinj.broadcast.group.BroadcastProgressCallback;
+import org.bitcoinj.broadcast.BroadcastTransactionListenerAdapter;
 import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import org.bitcoinj.broadcast.group.strategy.RatioOfConnectedRandomlyPeerGroupStrategy;
 import org.bitcoinj.core.listeners.TransactionConfidenceEventListener;
 import org.bitcoinj.testing.FakeTxBuilder;
 import org.bitcoinj.testing.InboundMessageQueuer;
@@ -47,8 +48,8 @@ import static org.junit.Assert.*;
 public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
     @Parameterized.Parameters
     public static Collection<ClientType[]> parameters() {
-        return Arrays.asList(new ClientType[] {ClientType.NIO_CLIENT_MANAGER},
-                             new ClientType[] {ClientType.BLOCKING_CLIENT_MANAGER});
+        return Arrays.asList(new ClientType[]{ClientType.NIO_CLIENT_MANAGER},
+                new ClientType[]{ClientType.BLOCKING_CLIENT_MANAGER});
     }
 
     public PeerGroupTransactionBroadcasterTest(ClientType clientType) {
@@ -61,7 +62,7 @@ public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
         Utils.setMockClock(); // Use mock clock
         super.setUp();
         // Fix the random permutation that TransactionBroadcast uses to shuffle the peers.
-        PeerGroupTransactionBroadcaster.random = new Random(0);
+        RatioOfConnectedRandomlyPeerGroupStrategy.random = new Random(0);
         peerGroup.setMinBroadcastConnections(2);
         peerGroup.start();
     }
@@ -74,15 +75,15 @@ public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
 
     @Test
     public void fourPeers() throws Exception {
-        InboundMessageQueuer[] channels = { connectPeer(1), connectPeer(2), connectPeer(3), connectPeer(4) };
+        InboundMessageQueuer[] channels = {connectPeer(1), connectPeer(2), connectPeer(3), connectPeer(4)};
         Transaction tx = new Transaction(PARAMS);
         tx.getConfidence().setSource(TransactionConfidence.Source.SELF);
         PeerGroupTransactionBroadcaster broadcast = new PeerGroupTransactionBroadcaster(peerGroup, tx);
         final AtomicDouble lastProgress = new AtomicDouble();
-        broadcast.setProgressCallback(new BroadcastProgressCallback() {
+        broadcast.setBroadcastTransactionListener(new BroadcastTransactionListenerAdapter() {
             @Override
-            public void onBroadcastProgress(double progress) {
-                lastProgress.set(progress);
+            public void onProgress(double percentage, int totalBroadcasts, int target) {
+                lastProgress.set(percentage);
             }
         });
         ListenableFuture<Transaction> future = broadcast.broadcast();
@@ -117,17 +118,17 @@ public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
         // Check that if we register a progress callback on a broadcast after the broadcast has started, it's invoked
         // immediately with the latest state. This avoids API users writing accidentally racy code when they use
         // a convenience method like peerGroup.broadcastTransaction.
-        InboundMessageQueuer[] channels = { connectPeer(1), connectPeer(2), connectPeer(3), connectPeer(4) };
+        InboundMessageQueuer[] channels = {connectPeer(1), connectPeer(2), connectPeer(3), connectPeer(4)};
         Transaction tx = FakeTxBuilder.createFakeTx(PARAMS, CENT, address);
         tx.getConfidence().setSource(TransactionConfidence.Source.SELF);
         PeerGroupTransactionBroadcaster broadcast = peerGroup.getTransactionBroadcaster(tx);
         inbound(channels[1], InventoryMessage.with(tx));
         pingAndWait(channels[1]);
         final AtomicDouble p = new AtomicDouble();
-        broadcast.setProgressCallback(new BroadcastProgressCallback() {
+        broadcast.setBroadcastTransactionListener(new BroadcastTransactionListenerAdapter() {
             @Override
-            public void onBroadcastProgress(double progress) {
-                p.set(progress);
+            public void onProgress(double percentage, int totalBroadcasts, int target) {
+                p.set(percentage);
             }
         }, Threading.SAME_THREAD);
         assertEquals(1.0, p.get(), 0.01);
@@ -135,7 +136,7 @@ public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
 
     @Test
     public void rejectHandling() throws Exception {
-        InboundMessageQueuer[] channels = { connectPeer(0), connectPeer(1), connectPeer(2), connectPeer(3), connectPeer(4) };
+        InboundMessageQueuer[] channels = {connectPeer(0), connectPeer(1), connectPeer(2), connectPeer(3), connectPeer(4)};
         Transaction tx = new Transaction(PARAMS);
         PeerGroupTransactionBroadcaster broadcast = new PeerGroupTransactionBroadcaster(peerGroup, tx);
         ListenableFuture<Transaction> future = broadcast.broadcast();
@@ -174,7 +175,7 @@ public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
         Transaction t1;
         {
             Message m;
-            while (!((m = outbound(p1)) instanceof Transaction));
+            while (!((m = outbound(p1)) instanceof Transaction)) ;
             t1 = (Transaction) m;
         }
         assertFalse(sendResult.broadcastComplete.isDone());

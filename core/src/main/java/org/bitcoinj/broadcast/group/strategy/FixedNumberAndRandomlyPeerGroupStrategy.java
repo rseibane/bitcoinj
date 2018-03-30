@@ -12,8 +12,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-
-public class RatioOfConnectedRandomlyPeerGroupStrategy implements BroadcastPeerGroupStrategy {
+public class FixedNumberAndRandomlyPeerGroupStrategy implements BroadcastPeerGroupStrategy {
 
     /**
      * Used for shuffling the peers before broadcast: unit tests can replace this to make themselves deterministic.
@@ -21,26 +20,21 @@ public class RatioOfConnectedRandomlyPeerGroupStrategy implements BroadcastPeerG
     @VisibleForTesting
     public static Random random = new Random();
 
-    private static final Logger log = LoggerFactory.getLogger(RatioOfConnectedRandomlyPeerGroupStrategy.class);
+    private static final Logger log = LoggerFactory.getLogger(FixedNumberAndRandomlyPeerGroupStrategy.class);
 
-    private float broadcastRatio;
-    private float targetRatio;
     private int targetSize;
 
-    public RatioOfConnectedRandomlyPeerGroupStrategy(float broadcastRatio, float targetRatio) {
-        this.broadcastRatio = broadcastRatio;
-        this.targetRatio = targetRatio;
+    public FixedNumberAndRandomlyPeerGroupStrategy(int targetNumber) {
+        this.targetSize = targetNumber;
     }
 
     @Override
     public List<Peer> choosePeers(PeerGroup peerGroup) {
         List<Peer> peers = peerGroup.getConnectedPeers();
-        int numConnected = peers.size();
-        int numToBroadcastTo = (int) Math.max(1, Math.ceil(numConnected * broadcastRatio));
-        targetSize = (int) Math.max(1, Math.ceil(numConnected * targetRatio));
+        int connectedSize = peers.size();
         Collections.shuffle(peers, random);
-        log.info("Sending to {} peers, will wait for {}, sending to: {}", numToBroadcastTo, targetSize, Joiner.on(",").join(peers));
-        return peers.subList(0, numToBroadcastTo);
+        log.info("Sending to {} peers, will wait for {}, sending to: {}", connectedSize, targetSize, Joiner.on(",").join(peers));
+        return peers;
     }
 
     @Override

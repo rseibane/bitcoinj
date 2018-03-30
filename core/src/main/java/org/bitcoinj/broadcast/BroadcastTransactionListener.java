@@ -1,13 +1,15 @@
 package org.bitcoinj.broadcast;
 
+import org.bitcoinj.core.RejectMessage;
 import org.bitcoinj.core.Transaction;
 
 public interface BroadcastTransactionListener {
 
-    void onBroadcastSuccess(Transaction tx);
+    void onBroadcastSuccess(Transaction tx, boolean isMined);
+
+    void onProgress(double percentage, int totalBroadcasts, int target);
 
     void onDoubleSpendDetected(Transaction broadcastedTx, Transaction detectedTx);
 
-    void onProgress(int totalBroadcasts, int target, boolean isMined);
-
+    void onBroadcastRejected(Transaction tx, RejectMessage rejectMessage);
 }
