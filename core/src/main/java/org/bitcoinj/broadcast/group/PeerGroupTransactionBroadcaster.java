@@ -32,10 +32,7 @@ import org.bitcoinj.wallet.Wallet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Executor;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -49,14 +46,18 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
 
+    public static final float CONNECTED_PEERS_BROADCAST_RATIO = .5f;
+    public static final float CONNECTED_PEERS_TARGET_RATIO = .25f;
+    public static final int PREVENT_DOUBLE_SPEND_DEFAULT_SECONDS = 5;
+
     private static final Logger log = LoggerFactory.getLogger(PeerGroupTransactionBroadcaster.class);
-    private static final float CONNECTED_PEERS_BROADCAST_RATIO = .5f;
-    private static final float CONNECTED_PEERS_TARGET_RATIO = .25f;
 
     private final SettableFuture<Transaction> future = SettableFuture.create();
+    private final Object lock = new Object();
     private final PeerGroup peerGroup;
     private final Transaction tx;
     private int minConnections;
+    private int preventDoubleSpendSeconds;
     private BroadcastPeerGroupStrategy peerGroupBroadcastStrategy;
 
     private Executor broadcastListenerExecutor;
@@ -64,9 +65,12 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
     private ConfidenceChangeListener confidenceChangeListener;
     private RejectionListener rejectionListener;
     private TransactionReceivedListener transactionReceivedListener;
+    private Timer stopPreventingDoubleSpendTimer;
 
     private int numSeemPeers;
     private boolean isMined;
+    private boolean isBroadcastCompleted;
+    private boolean isDoubleSpendSecondsElapsed;
 
     // Tracks which nodes sent us a reject message about this broadcast, if any. Useful for debugging.
     private Map<Peer, RejectMessage> rejects = Collections.synchronizedMap(new HashMap<Peer, RejectMessage>());
@@ -75,13 +79,18 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         this.peerGroup = peerGroup;
         this.tx = tx;
         this.minConnections = Math.max(1, peerGroup.getMinBroadcastConnections());
+        this.preventDoubleSpendSeconds = PREVENT_DOUBLE_SPEND_DEFAULT_SECONDS;
         this.peerGroupBroadcastStrategy =
                 new RatioOfConnectedRandomlyPeerGroupStrategy(CONNECTED_PEERS_BROADCAST_RATIO, CONNECTED_PEERS_TARGET_RATIO);
         this.broadcastListenerExecutor = Threading.USER_THREAD;
         this.confidenceChangeListener = new ConfidenceChangeListener();
         this.rejectionListener = new RejectionListener();
         this.transactionReceivedListener = new TransactionReceivedListener();
-
+        this.stopPreventingDoubleSpendTimer = new Timer(true);
+        this.numSeemPeers = 0;
+        this.isMined = false;
+        this.isBroadcastCompleted = false;
+        this.isDoubleSpendSecondsElapsed = false;
     }
 
     // Only for mock broadcasts.
@@ -106,6 +115,11 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
 
     public PeerGroupTransactionBroadcaster setMinConnections(int minConnections) {
         this.minConnections = minConnections;
+        return this;
+    }
+
+    public PeerGroupTransactionBroadcaster setPreventDoubleSpendSeconds(int seconds) {
+        this.preventDoubleSpendSeconds = seconds;
         return this;
     }
 
@@ -140,6 +154,16 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         peerGroup.addOnTransactionBroadcastListener(Threading.SAME_THREAD, transactionReceivedListener);
         log.info("Waiting for {} peers required for broadcast, we have {} ...", minConnections, peerGroup.getConnectedPeers().size());
         peerGroup.waitForPeers(minConnections).addListener(new EnoughAvailablePeers(), Threading.SAME_THREAD);
+        stopPreventingDoubleSpendTimer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                synchronized (lock){
+                    if (!isDoubleSpendSecondsElapsed){
+                        onDoubleSpendPreventionElapsed();
+                    }
+                }
+            }
+        }, preventDoubleSpendSeconds * 1000);
         return future;
     }
 
@@ -159,17 +183,29 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         }
     }
 
-    private void onFinishBroadcast() {
-        peerGroup.removePreMessageReceivedEventListener(rejectionListener);
-        tx.getConfidence().removeEventListener(confidenceChangeListener);
-    }
-
     private void onBroadcastProgress(int numSeenPeers, boolean mined) {
         synchronized (this) {
             this.numSeemPeers = numSeenPeers;
             this.isMined = mined;
         }
         notifyBroadcastProgress(numSeenPeers, mined);
+    }
+
+    private void onBroadcastCompleted() {
+        isBroadcastCompleted = true;
+        notifyBroadcastSuccess();
+    }
+
+    private void onDoubleSpendPreventionElapsed() {
+        isDoubleSpendSecondsElapsed = true;
+        peerGroup.removeOnTransactionBroadcastListener(transactionReceivedListener);
+        notifyBroadcastSuccess();
+    }
+
+    private void removeListeners() {
+        peerGroup.removePreMessageReceivedEventListener(rejectionListener);
+        peerGroup.removeOnTransactionBroadcastListener(transactionReceivedListener);
+        tx.getConfidence().removeEventListener(confidenceChangeListener);
     }
 
     private void notifyBroadcastProgress(final int numSeenPeers, boolean mined) {
@@ -196,8 +232,21 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         }
     }
 
+    private void notifyBroadcastSuccess() {
+        if (isBroadcastCompleted && isDoubleSpendSecondsElapsed) {
+            removeListeners();
+            future.set(tx);
+            broadcastListenerExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    broadcastListener.onBroadcastSuccess(tx, isMined);
+                }
+            });
+        }
+    }
+
     private void notifyDoubleSpend(final Transaction detectedTx) {
-        onFinishBroadcast();
+        removeListeners();
         future.setException(new RejectedTransactionException(tx, null));
         broadcastListenerExecutor.execute(new Runnable() {
             @Override
@@ -208,23 +257,12 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
     }
 
     private void notifyTransactionRejectedError(final Transaction tx, final RejectMessage rejectMessage) {
-        onFinishBroadcast();
+        removeListeners();
         future.setException(new RejectedTransactionException(tx, rejectMessage));
         broadcastListenerExecutor.execute(new Runnable() {
             @Override
             public void run() {
                 broadcastListener.onBroadcastRejected(tx, rejectMessage);
-            }
-        });
-    }
-
-    private void notifyBroadcastSuccess() {
-        onFinishBroadcast();
-        future.set(tx);
-        broadcastListenerExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                broadcastListener.onBroadcastSuccess(tx, isMined);
             }
         });
     }
@@ -247,7 +285,7 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
                 }
             }
             if (minConnections == 1) {
-                notifyBroadcastSuccess();
+                onBroadcastCompleted();
             }
         }
     }
@@ -255,17 +293,21 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
     private class ConfidenceChangeListener implements TransactionConfidence.Listener {
         @Override
         public void onConfidenceChanged(TransactionConfidence conf, ChangeReason reason) {
-            int numSeenPeers = conf.numBroadcastPeers() + rejects.size();
-            boolean mined = tx.getAppearsInHashes() != null;
-            log.info("broadcastTransaction: {}:  TX {} seen by {} peers{}",
-                    reason, tx.getHashAsString(), numSeenPeers, mined ? " and isMined" : "");
+            synchronized (lock){
+                if (!isBroadcastCompleted){
+                    int numSeenPeers = conf.numBroadcastPeers() + rejects.size();
+                    boolean mined = tx.getAppearsInHashes() != null;
+                    log.info("broadcastTransaction: {}:  TX {} seen by {} peers{}",
+                            reason, tx.getHashAsString(), numSeenPeers, mined ? " and isMined" : "");
 
-            onBroadcastProgress(numSeenPeers, mined);
+                    onBroadcastProgress(numSeenPeers, mined);
 
-            if (numSeenPeers >= peerGroupBroadcastStrategy.getBroadcastTargetSize() || mined) {
-                log.info("broadcastTransaction: {} complete", tx.getHash());
-                conf.removeEventListener(this);
-                notifyBroadcastSuccess();
+                    if (numSeenPeers >= peerGroupBroadcastStrategy.getBroadcastTargetSize() || mined) {
+                        log.info("broadcastTransaction: {} complete", tx.getHash());
+                        conf.removeEventListener(this);
+                        onBroadcastCompleted();
+                    }
+                }
             }
         }
     }

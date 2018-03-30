@@ -243,6 +243,7 @@ public class PeerGroupTransactionBroadcasterTest extends TestWithPeerGroup {
         inv.addTransaction(t1);
         inbound(p2, inv);
         pingAndWait(p2);
+        Thread.sleep(PeerGroupTransactionBroadcaster.PREVENT_DOUBLE_SPEND_DEFAULT_SECONDS * 2 * 1000);
         Threading.waitForUserCode();
         assertTrue(sendResult.broadcastComplete.isDone());
         assertEquals(transactions[0], sendResult.tx);
