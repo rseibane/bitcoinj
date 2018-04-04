@@ -16,18 +16,18 @@
 
 package org.bitcoinj.protocols.channels;
 
-import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+import org.bitcoinj.broadcast.TransactionBroadcaster;
 import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
 import org.bitcoinj.core.*;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.ScriptBuilder;
 import org.bitcoinj.testing.TestWithWallet;
 import org.bitcoinj.wallet.SendRequest;
 import org.bitcoinj.wallet.Wallet;
-
-import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -110,10 +110,10 @@ public class PaymentChannelStateTest extends TestWithWallet {
         broadcasts = new LinkedBlockingQueue<TxFuturePair>();
         mockBroadcaster = new TransactionBroadcasterFactory() {
             @Override
-            public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
+            public TransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
                 SettableFuture<Transaction> future = SettableFuture.create();
                 broadcasts.add(new TxFuturePair(tx, future));
-                return PeerGroupTransactionBroadcaster.createMockBroadcast(tx, future);
+                return PeerGroupTransactionBroadcaster.createMockBroadcast(future);
             }
         };
     }

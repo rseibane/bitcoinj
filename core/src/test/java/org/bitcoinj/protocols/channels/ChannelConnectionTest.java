@@ -16,8 +16,14 @@
 
 package org.bitcoinj.protocols.channels;
 
-import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+import com.google.protobuf.ByteString;
+import org.bitcoin.paymentchannel.Protos;
+import org.bitcoinj.broadcast.TransactionBroadcaster;
 import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
 import org.bitcoinj.core.*;
 import org.bitcoinj.testing.TestWithWallet;
 import org.bitcoinj.utils.Threading;
@@ -25,12 +31,6 @@ import org.bitcoinj.wallet.Wallet;
 import org.bitcoinj.wallet.WalletExtension;
 import org.bitcoinj.wallet.WalletFiles;
 import org.bitcoinj.wallet.WalletProtobufSerializer;
-
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import com.google.protobuf.ByteString;
-import org.bitcoin.paymentchannel.Protos;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -49,10 +49,10 @@ import java.util.Collection;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.bitcoin.paymentchannel.Protos.TwoWayChannelMessage.MessageType;
 import static org.bitcoinj.core.Coin.*;
 import static org.bitcoinj.protocols.channels.PaymentChannelCloseException.CloseReason;
 import static org.bitcoinj.testing.FakeTxBuilder.createFakeBlock;
-import static org.bitcoin.paymentchannel.Protos.TwoWayChannelMessage.MessageType;
 import static org.junit.Assert.*;
 
 @RunWith(Parameterized.class)
@@ -122,12 +122,12 @@ public class ChannelConnectionTest extends TestWithWallet {
         broadcastTxPause = new Semaphore(0);
         mockBroadcaster = new TransactionBroadcasterFactory() {
             @Override
-            public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
+            public TransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
                 broadcastTxPause.acquireUninterruptibly();
                 SettableFuture<Transaction> future = SettableFuture.create();
                 future.set(tx);
                 broadcasts.add(tx);
-                return PeerGroupTransactionBroadcaster.createMockBroadcast(tx, future);
+                return PeerGroupTransactionBroadcaster.createMockBroadcast(future);
             }
         };
 

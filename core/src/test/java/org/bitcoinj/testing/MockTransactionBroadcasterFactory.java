@@ -16,15 +16,16 @@
 
 package org.bitcoinj.testing;
 
-import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
-import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
-import org.bitcoinj.core.*;
-import org.bitcoinj.utils.Threading;
-import org.bitcoinj.wallet.Wallet;
-
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.SettableFuture;
+import org.bitcoinj.broadcast.TransactionBroadcaster;
+import org.bitcoinj.broadcast.TransactionBroadcasterFactory;
+import org.bitcoinj.broadcast.group.PeerGroupTransactionBroadcaster;
+import org.bitcoinj.core.Transaction;
+import org.bitcoinj.core.VerificationException;
+import org.bitcoinj.utils.Threading;
+import org.bitcoinj.wallet.Wallet;
 
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
@@ -71,7 +72,7 @@ public class MockTransactionBroadcasterFactory implements TransactionBroadcaster
     }
 
     @Override
-    public PeerGroupTransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
+    public TransactionBroadcaster getTransactionBroadcaster(Transaction tx) {
         // Use a lock just to catch lock ordering inversions e.g. wallet->broadcaster.
         lock.lock();
         try {
@@ -91,7 +92,7 @@ public class MockTransactionBroadcasterFactory implements TransactionBroadcaster
                 public void onFailure(Throwable t) {
                 }
             });
-            return PeerGroupTransactionBroadcaster.createMockBroadcast(tx, result);
+            return PeerGroupTransactionBroadcaster.createMockBroadcast(result);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {

@@ -93,14 +93,9 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         this.isDoubleSpendSecondsElapsed = false;
     }
 
-    // Only for mock broadcasts.
-    private PeerGroupTransactionBroadcaster(Transaction tx) {
-        this(null, tx);
-    }
-
     @VisibleForTesting
-    public static PeerGroupTransactionBroadcaster createMockBroadcast(Transaction tx, final SettableFuture<Transaction> future) {
-        return new PeerGroupTransactionBroadcaster(tx) {
+    public static TransactionBroadcaster createMockBroadcast(final SettableFuture<Transaction> future) {
+        return new TransactionBroadcaster() {
             @Override
             public ListenableFuture<Transaction> broadcast() {
                 return future;
@@ -157,8 +152,8 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         stopPreventingDoubleSpendTimer.schedule(new TimerTask() {
             @Override
             public void run() {
-                synchronized (lock){
-                    if (!isDoubleSpendSecondsElapsed){
+                synchronized (lock) {
+                    if (!isDoubleSpendSecondsElapsed) {
                         onDoubleSpendPreventionElapsed();
                     }
                 }
@@ -293,8 +288,8 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
     private class ConfidenceChangeListener implements TransactionConfidence.Listener {
         @Override
         public void onConfidenceChanged(TransactionConfidence conf, ChangeReason reason) {
-            synchronized (lock){
-                if (!isBroadcastCompleted){
+            synchronized (lock) {
+                if (!isBroadcastCompleted) {
                     int numSeenPeers = conf.numBroadcastPeers() + rejects.size();
                     boolean mined = tx.getAppearsInHashes() != null;
                     log.info("broadcastTransaction: {}:  TX {} seen by {} peers{}",
