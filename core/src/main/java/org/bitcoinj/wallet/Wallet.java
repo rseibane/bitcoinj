@@ -3826,7 +3826,7 @@ public class Wallet extends BaseTaggableObject
         // txConfidenceListener which will in turn invoke the wallets event listener onTransactionConfidenceChanged
         // method.
         result.broadcast = broadcaster.getTransactionBroadcaster(tx);
-        result.broadcastComplete = result.broadcast.broadcast();
+        result.broadcastComplete = result.broadcast.future();
         return result;
     }
 
