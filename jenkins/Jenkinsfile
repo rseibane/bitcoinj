@@ -18,7 +18,6 @@
 // tested with Jenkins v2.89.3
 // required plugins: ansiColor, jaCoCo
 // for central jenkins, also need SonarQube scanner plugin
-
 pipeline {
     agent {
     	docker {
@@ -54,6 +53,7 @@ pipeline {
             }
         }
 
+<<<<<<< HEAD
 
         /*
          *
@@ -61,6 +61,8 @@ pipeline {
          *
          */
 
+=======
+>>>>>>> origin
         // test syncing with testnet
         stage('test testnet sync') {
             steps {
@@ -78,6 +80,7 @@ pipeline {
                 }
             }
         }
+<<<<<<< HEAD
 
 
         /*
@@ -98,12 +101,17 @@ pipeline {
                 }
             }
         }
+=======
+>>>>>>> origin
     }
 
     post {
         always {
             junit '**/target/*-reports/*.xml'
+<<<<<<< HEAD
             jacoco(execPattern: '**/target/jacoco.exec')
+=======
+>>>>>>> origin
         }
         success {
             archive '**/target/*.jar'

@@ -1,6 +1,4 @@
-[![Build Status](https://travis-ci.org/bitcoinj-cash/bitcoinj.png?branch=cash)](https://travis-ci.org/bitcoinj-cash/bitcoinj)   [![Coverage Status](https://coveralls.io/repos/github/bitcoinj-cash/bitcoinj/badge.svg?branch=cash)](https://coveralls.io/github/bitcoinj-cash/bitcoinj?branch=cash) 
-
-### Welcome to bitcoinj
+[![Build Status](https://travis-ci.org/bitcoinj-cash/bitcoinj.png?branch=cash)](https://travis-ci.org/bitcoinj-cash/bitcoinj)   [![Coverage Status](https://coveralls.io/repos/github/bitcoinj-cash/bitcoinj/badge.svg?branch=cash)](https://coveralls.io/github/bitcoinj-cash/bitcoinj?branch=cash)
 
 ### Welcome to bitcoinj.cash
 

@@ -35,7 +35,7 @@ public class UnitTestParams extends AbstractBitcoinNetParams {
         packetMagic = 0xf4e5f3f4L;      // must be same as testnet3
         addressHeader = 111;
         p2shHeader = 196;
-        acceptableAddressCodes = new int[] { addressHeader, p2shHeader };
+        acceptableAddressCodes = new int[]{addressHeader, p2shHeader};
         maxTarget = new BigInteger("00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16);
         genesisBlock.setTime(System.currentTimeMillis() / 1000);
         genesisBlock.setDifficultyTarget(Block.EASIEST_DIFFICULTY_TARGET);
@@ -60,6 +60,7 @@ public class UnitTestParams extends AbstractBitcoinNetParams {
     }
 
     private static UnitTestParams instance;
+
     public static synchronized UnitTestParams get() {
         if (instance == null) {
             instance = new UnitTestParams();

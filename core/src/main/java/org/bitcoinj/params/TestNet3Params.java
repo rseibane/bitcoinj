@@ -17,12 +17,9 @@
 
 package org.bitcoinj.params;
 
-import org.bitcoinj.core.*;
-import org.bitcoinj.store.BlockStore;
-import org.bitcoinj.store.BlockStoreException;
+import org.bitcoinj.core.Block;
+import org.bitcoinj.core.Utils;
 
-import com.google.common.base.Preconditions;
-import java.math.BigInteger;
 import java.util.Date;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -43,7 +40,7 @@ public class TestNet3Params extends AbstractBitcoinNetParams {
         port = 18333;
         addressHeader = 111;
         p2shHeader = 196;
-        acceptableAddressCodes = new int[] { addressHeader, p2shHeader };
+        acceptableAddressCodes = new int[]{addressHeader, p2shHeader};
         dumpedPrivateKeyHeader = 239;
         genesisBlock.setTime(1296688602L);
         genesisBlock.setDifficultyTarget(0x1d00ffffL);
@@ -54,8 +51,8 @@ public class TestNet3Params extends AbstractBitcoinNetParams {
         checkState(genesisHash.equals("000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"));
         alertSigningKey = Utils.HEX.decode("04302390343f91cc401d56d68b123028bf52e5fca1939df127f63c6467cdf9c8e2c14b61104cf817d0b780da337893ecc4aaff1309e536162dabbdb45200ca2b0a");
 
-        dnsSeeds = new String[] {
-               "testnet-seed.bitcoinabc.org",
+        dnsSeeds = new String[]{
+                "testnet-seed.bitcoinabc.org",
                 "testnet-seed-abc.bitcoinforks.org",
                 "testnet-seed.bitprim.org",
                 "testnet-seed.deadalnix.me",
@@ -76,6 +73,7 @@ public class TestNet3Params extends AbstractBitcoinNetParams {
     }
 
     private static TestNet3Params instance;
+
     public static synchronized TestNet3Params get() {
         if (instance == null) {
             instance = new TestNet3Params();
@@ -91,8 +89,7 @@ public class TestNet3Params extends AbstractBitcoinNetParams {
     // February 16th 2012
     private static final Date testnetDiffDate = new Date(1329264000000L);
 
-    public static boolean isValidTestnetDateBlock(Block block){
+    public static boolean isValidTestnetDateBlock(Block block) {
         return block.getTime().after(testnetDiffDate);
     }
-
 }

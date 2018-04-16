@@ -64,10 +64,10 @@ public abstract class AbstractBitcoinNetParams extends NetworkParameters {
      * Compute the a target based on the work done between 2 blocks and the time
      * required to produce that work.
      */
-     public static BigInteger ComputeTarget(StoredBlock pindexFirst,
-                                   StoredBlock pindexLast) {
+    public static BigInteger ComputeTarget(StoredBlock pindexFirst,
+                                           StoredBlock pindexLast) {
 
-         Preconditions.checkState(pindexLast.getHeight() > pindexFirst.getHeight());
+        Preconditions.checkState(pindexLast.getHeight() > pindexFirst.getHeight());
 
         /*
          * From the total work done and the time it took to produce that much work,
@@ -94,7 +94,7 @@ public abstract class AbstractBitcoinNetParams extends NetworkParameters {
          * By expressing 1 as W / W, we get (2^256 - W) / W, and we can compute
          * 2^256 - W as the complement of W.
          */
-         return LARGEST_HASH.divide(work).subtract(BigInteger.ONE);//target.add(BigInteger.ONE))
+        return LARGEST_HASH.divide(work).subtract(BigInteger.ONE);//target.add(BigInteger.ONE))
     }
 
     @Override
