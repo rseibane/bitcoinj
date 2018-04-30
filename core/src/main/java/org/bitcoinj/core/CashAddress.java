@@ -59,7 +59,8 @@ public class CashAddress extends Address {
         return addressType;
     }
 
-    public String toString() {
+    @Override
+    public String toCashAddressFormat() {
         return CashAddressHelper.encodeCashAddress(getParameters().getCashAddrPrefix(),
                 CashAddressHelper.packAddressData(getHash160(), addressType.getValue()));
     }

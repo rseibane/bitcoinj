@@ -33,7 +33,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * <p>A Bitcoin address looks like 1MsScoe2fTJoq4ZPdQgqyhgWeoNamYPevy and is derived from an elliptic curve public key
  * plus a set of network parameters. Not to be confused with a {@link PeerAddress} or {@link AddressMessage}
  * which are about network (TCP) addresses.</p>
- *
+ * <p>
  * <p>A standard address is built by taking the RIPE-MD160 hash of the public key bytes, with a version prefix and a
  * checksum suffix, then encoding it textually as base58. The version prefix is used to both denote the network for
  * which the address is valid (see {@link NetworkParameters}, and also to indicate how the bytes inside the address
@@ -50,7 +50,7 @@ public class Address extends VersionedChecksummedBytes {
 
     /**
      * Construct an address from parameters, the address version, and the hash160 form. Example:<p>
-     *
+     * <p>
      * <pre>new Address(MainNetParams.get(), NetworkParameters.getAddressHeader(), Hex.decode("4a22c3c4cbb31e4d03b15550636762bda0baf85a"));</pre>
      */
     public Address(NetworkParameters params, int version, byte[] hash160) throws WrongNetworkException {
@@ -62,7 +62,9 @@ public class Address extends VersionedChecksummedBytes {
         this.params = params;
     }
 
-    /** Returns an Address that represents the given P2SH script hash. */
+    /**
+     * Returns an Address that represents the given P2SH script hash.
+     */
     public static Address fromP2SHHash(NetworkParameters params, byte[] hash160) {
         try {
             return new Address(params, params.getP2SHHeader(), hash160);
@@ -71,7 +73,9 @@ public class Address extends VersionedChecksummedBytes {
         }
     }
 
-    /** Returns an Address that represents the script hash extracted from the given scriptPubKey */
+    /**
+     * Returns an Address that represents the script hash extracted from the given scriptPubKey
+     */
     public static Address fromP2SHScript(NetworkParameters params, Script scriptPubKey) {
         checkArgument(scriptPubKey.isPayToScriptHash(), "Not a P2SH script");
         return fromP2SHHash(params, scriptPubKey.getPubKeyHash());
@@ -79,14 +83,11 @@ public class Address extends VersionedChecksummedBytes {
 
     /**
      * Construct an address from its Base58 representation.
-     * @param params
-     *            The expected NetworkParameters or null if you don't want validation.
-     * @param base58
-     *            The textual form of the address, such as "17kzeh4N8g49GFvdDzSf8PjaPfyoD1MndL".
-     * @throws AddressFormatException
-     *             if the given base58 doesn't parse or the checksum is invalid
-     * @throws WrongNetworkException
-     *             if the given address is valid but for a different chain (eg testnet vs mainnet)
+     *
+     * @param params The expected NetworkParameters or null if you don't want validation.
+     * @param base58 The textual form of the address, such as "17kzeh4N8g49GFvdDzSf8PjaPfyoD1MndL".
+     * @throws AddressFormatException if the given base58 doesn't parse or the checksum is invalid
+     * @throws WrongNetworkException  if the given address is valid but for a different chain (eg testnet vs mainnet)
      */
     public static Address fromBase58(@Nullable NetworkParameters params, String base58) throws AddressFormatException {
         return new Address(params, base58);
@@ -94,7 +95,7 @@ public class Address extends VersionedChecksummedBytes {
 
     /**
      * Construct an address from parameters and the hash160 form. Example:<p>
-     *
+     * <p>
      * <pre>new Address(MainNetParams.get(), Hex.decode("4a22c3c4cbb31e4d03b15550636762bda0baf85a"));</pre>
      */
     public Address(NetworkParameters params, byte[] hash160) {
@@ -103,7 +104,9 @@ public class Address extends VersionedChecksummedBytes {
         this.params = params;
     }
 
-    /** @deprecated Use {@link #fromBase58(NetworkParameters, String)} */
+    /**
+     * @deprecated Use {@link #fromBase58(NetworkParameters, String)}
+     */
     @Deprecated
     public Address(@Nullable NetworkParameters params, String address) throws AddressFormatException {
         super(address);
@@ -127,7 +130,9 @@ public class Address extends VersionedChecksummedBytes {
         }
     }
 
-    /** The (big endian) 20 byte hash that is the core of a Bitcoin address. */
+    /**
+     * The (big endian) 20 byte hash that is the core of a Bitcoin address.
+     */
     public byte[] getHash160() {
         return bytes;
     }
@@ -157,6 +162,7 @@ public class Address extends VersionedChecksummedBytes {
      * Given an address, examines the version byte and attempts to find a matching NetworkParameters. If you aren't sure
      * which network the address is intended for (eg, it was provided by a user), you can use this to decide if it is
      * compatible with the current wallet.
+     *
      * @return a NetworkParameters of the address
      * @throws AddressFormatException if the string wasn't of a known version
      */
@@ -198,5 +204,12 @@ public class Address extends VersionedChecksummedBytes {
     private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
         in.defaultReadObject();
         params = NetworkParameters.fromID(in.readUTF());
+    }
+
+    public String toCashAddressFormat() {
+        VersionedChecksummedBytes versionedBytes = new VersionedChecksummedBytes(toBase58());
+        CashAddress.CashAddressType type = CashAddress.getType(params, versionedBytes.version);
+        return CashAddressHelper.encodeCashAddress(getParameters().getCashAddrPrefix(),
+                CashAddressHelper.packAddressData(getHash160(), type.getValue()));
     }
 }

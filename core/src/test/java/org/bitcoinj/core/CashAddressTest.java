@@ -211,7 +211,7 @@ public class CashAddressTest {
             Address legacyAddress = cashAddressFactory.getFromBase58(params, legacy);
             String plainCashAddress = CASH_ADDRESS_BY_LEGACY_FORMAT.get(legacy);
 
-            assertEquals(legacyAddress.toString(), plainCashAddress);
+            assertEquals(legacyAddress.toCashAddressFormat(), plainCashAddress);
         }
     }
 
