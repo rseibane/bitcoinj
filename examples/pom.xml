@@ -21,11 +21,7 @@
     <parent>
         <groupId>cash.bitcoinj</groupId>
         <artifactId>bitcoinj-parent</artifactId>
-<<<<<<< HEAD
         <version>0.15-SNAPSHOT</version>
-=======
-        <version>0.14-SNAPSHOT</version>
->>>>>>> origin
     </parent>
     <modelVersion>4.0.0</modelVersion>
 

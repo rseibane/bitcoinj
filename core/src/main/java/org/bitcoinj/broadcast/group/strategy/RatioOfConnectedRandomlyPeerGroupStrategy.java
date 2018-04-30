@@ -26,10 +26,19 @@ public class RatioOfConnectedRandomlyPeerGroupStrategy implements BroadcastPeerG
     private float broadcastRatio;
     private float targetRatio;
     private int targetSize;
+    private int maxTargetSize;
 
     public RatioOfConnectedRandomlyPeerGroupStrategy(float broadcastRatio, float targetRatio) {
         this.broadcastRatio = broadcastRatio;
         this.targetRatio = targetRatio;
+        this.maxTargetSize = Integer.MAX_VALUE;
+    }
+
+    public RatioOfConnectedRandomlyPeerGroupStrategy(float broadcastRatio, float targetRatio,
+                                                     int maxTargetSize) {
+        this.broadcastRatio = broadcastRatio;
+        this.targetRatio = targetRatio;
+        this.maxTargetSize = maxTargetSize;
     }
 
     @Override
@@ -38,6 +47,7 @@ public class RatioOfConnectedRandomlyPeerGroupStrategy implements BroadcastPeerG
         int numConnected = peers.size();
         int numToBroadcastTo = (int) Math.max(1, Math.ceil(numConnected * broadcastRatio));
         targetSize = (int) Math.max(1, Math.ceil(numConnected * targetRatio));
+        targetSize = Math.min(targetSize, maxTargetSize);
         Collections.shuffle(peers, random);
         log.info("Sending to {} peers, will wait for {}, sending to: {}", numToBroadcastTo, targetSize, Joiner.on(",").join(peers));
         return peers.subList(0, numToBroadcastTo);

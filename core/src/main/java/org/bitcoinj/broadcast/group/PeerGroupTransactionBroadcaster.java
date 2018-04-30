@@ -19,7 +19,6 @@ package org.bitcoinj.broadcast.group;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import com.sun.istack.internal.NotNull;
 import org.bitcoinj.broadcast.BroadcastTransactionListener;
 import org.bitcoinj.broadcast.DoubleSpentDetector;
 import org.bitcoinj.broadcast.TransactionBroadcaster;
@@ -108,6 +107,11 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
         };
     }
 
+    public PeerGroupTransactionBroadcaster setPeerGroupBroadcastStrategy(BroadcastPeerGroupStrategy strategy) {
+        this.peerGroupBroadcastStrategy = strategy;
+        return this;
+    }
+
     public PeerGroupTransactionBroadcaster setMinConnections(int minConnections) {
         this.minConnections = minConnections;
         return this;
@@ -123,7 +127,7 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
     }
 
     public PeerGroupTransactionBroadcaster setBroadcastTransactionListener(BroadcastTransactionListener broadcastListener,
-                                                                           @NotNull Executor executor) {
+                                                                           Executor executor) {
         boolean shouldInvoke;
         int num;
         boolean mined;
@@ -163,6 +167,7 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
     }
 
     private void onRejectionMessage(Peer peer, RejectMessage rejectMessage) {
+        log.info("Rejection message ({}) from peer {}", rejectMessage, peer);
         if (tx.getHash().equals(rejectMessage.getRejectedObjectHash())) {
             if (rejectMessage.getReasonCode() == RejectMessage.RejectCode.DUPLICATE) {
                 notifyDoubleSpend(tx);
@@ -274,6 +279,7 @@ public class PeerGroupTransactionBroadcaster implements TransactionBroadcaster {
             }
             for (Peer peer : peers) {
                 try {
+                    log.info("Broadcasting Transaction to peer {}", peer.toString());
                     peer.sendMessage(tx);
                 } catch (Exception e) {
                     log.error("Caught exception sending to {}", peer, e);
